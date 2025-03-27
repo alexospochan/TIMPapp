@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Image, Clipboard, ToastAndroid } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Image, ToastAndroid } from 'react-native';
 import { MaterialIcons, FontAwesome } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import * as FileSystem from 'expo-file-system';
+import { PDFDocument, rgb } from 'react-native-pdf-lib'; // Importar librería de PDF
+import { Sharing } from 'expo';
 
 const etiquetas = {
   'Zanjeado': "Descripción del Trabajo RealizadoEl trabajo consistió en la excavación de una zanja para la instalación de cables de fibra óptica...",
@@ -16,26 +19,10 @@ export default function ReportScreen() {
   const [descripcion, setDescripcion] = useState(etiquetas['Zanjeado']);
   const [imagenes, setImagenes] = useState([]);
   const [coordenadas, setCoordenadas] = useState([]);
-  const [mensaje, setMensaje] = useState('');
 
   const handleEtiquetaChange = (nuevaEtiqueta) => {
     setEtiqueta(nuevaEtiqueta);
     setDescripcion(etiquetas[nuevaEtiqueta]);
-  };
-
-  const copiarCoordenadas = async (coordenadas, index) => {
-    await Clipboard.setString(coordenadas);
-    ToastAndroid.show('Coordenadas copiadas exitosamente', ToastAndroid.SHORT);
-
-    const updatedImages = [...imagenes];
-    updatedImages[index].mensaje = 'Coordenadas copiadas exitosamente';
-    setImagenes(updatedImages);
-
-    setTimeout(() => {
-      const resetImages = [...imagenes];
-      resetImages[index].mensaje = '';
-      setImagenes(resetImages);
-    }, 2000);
   };
 
   const tomarFoto = async () => {
@@ -63,9 +50,6 @@ export default function ReportScreen() {
         const newImage = {
           uri: result.assets[0].uri,
           coordenadas: `${location.coords.latitude}, ${location.coords.longitude}`,
-          latitud: location.coords.latitude,
-          longitud: location.coords.longitude,
-          mensaje: ''
         };
         setImagenes([newImage, ...imagenes]);
         setCoordenadas([newImage.coordenadas, ...coordenadas]);
@@ -75,9 +59,84 @@ export default function ReportScreen() {
     }
   };
 
-  const eliminarFoto = (index) => {
-    const updatedImages = imagenes.filter((image, imageIndex) => imageIndex !== index);
-    setImagenes(updatedImages);
+  const convertirImagenABase64 = async (uri) => {
+    try {
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      return base64;
+    } catch (error) {
+      console.error("Error al convertir la imagen a base64:", error);
+      return null;
+    }
+  };
+
+  const generarPDF = async () => {
+    try {
+      console.log("Generando PDF...");
+
+      // Asegurarnos de crear un PDFDocument válido
+      const pdf = await PDFDocument.create();
+      
+      // Crear una página en el PDF, y obtener el tamaño de la página.
+      const page = pdf.addPage([600, 800]); 
+      const { width, height } = page.getSize();
+
+      // Comprobar que la página se creó correctamente.
+      if (!page) {
+        throw new Error('No se pudo crear la página en el PDF.');
+      }
+
+      // Agregar un título en la página
+      page.drawText('Reporte de Fotos y Coordenadas', {
+        x: 50,
+        y: height - 50,
+        size: 18,
+        color: rgb(0, 0, 0),
+      });
+
+    
+      for (let index = 0; index < imagenes.length; index++) {
+        const image = imagenes[index];
+        const imageBase64 = await convertirImagenABase64(image.uri); 
+        const imageCoordinates = image.coordenadas;
+
+     
+        if (imageBase64 && imageCoordinates) {
+          // Dibujar la imagen en el PDF
+          page.drawImage(imageBase64, {
+            x: 50,
+            y: height - 100 - index * 200,
+            width: 180,
+            height: 140,
+          });
+
+          // Agregar las coordenadas en el PDF
+          page.drawText(`Coordenadas: ${imageCoordinates}`, {
+            x: 250,
+            y: height - 120 - index * 200,
+            size: 12,
+            color: rgb(0, 0, 0),
+          });
+        } else {
+          console.error(`Imagen o coordenadas faltantes para la imagen en el índice ${index}`);
+        }
+      }
+
+      // Guardar el PDF en el sistema de archivos
+      const pdfPath = `${FileSystem.documentDirectory}reporte_fotos.pdf`;
+      await pdf.writeToFile(pdfPath);
+
+      // Mostrar un mensaje de éxito
+      ToastAndroid.show('PDF generado exitosamente', ToastAndroid.SHORT);
+
+      // Intentar compartir el archivo PDF generado
+      await Sharing.shareAsync(pdfPath);
+
+    } catch (error) {
+      console.error("Error generando el PDF:", error);
+      ToastAndroid.show('Error al generar el PDF', ToastAndroid.SHORT);
+    }
   };
 
   return (
@@ -129,7 +188,6 @@ export default function ReportScreen() {
           onChangeText={setDescripcion}
         />
 
-        
         <Text style={styles.label}>Fotos y Coordenadas:</Text>
         <View style={styles.imageSection}>
           {imagenes.length === 0 ? (
@@ -137,18 +195,9 @@ export default function ReportScreen() {
           ) : (
             imagenes.map((image, index) => (
               <View key={index} style={styles.imageItem}>
-                <Text style={styles.imageTitle}>Imagen{index + 1}</Text>
+                <Text style={styles.imageTitle}>Imagen {index + 1}</Text>
                 <Image source={{ uri: image.uri }} style={styles.imagePreview} />
-                <TouchableOpacity onPress={() => copiarCoordenadas(image.coordenadas, index)}>
-                  <Text style={styles.copyText}>Copiar Coordenadas </Text>
-                </TouchableOpacity>
                 <Text style={styles.value}>Coordenadas: {image.coordenadas}</Text>
-                <Text style={styles.value}>Latitud: {image.latitud}</Text>
-                <Text style={styles.value}>Longitud: {image.longitud}</Text>
-                {image.mensaje && <Text style={styles.message}>{image.mensaje}</Text>}
-                <TouchableOpacity onPress={() => eliminarFoto(index)} style={styles.deleteButton}>
-                  <MaterialIcons name="delete" size={24} color="red" />
-                </TouchableOpacity>
               </View>
             ))
           )}
@@ -160,6 +209,14 @@ export default function ReportScreen() {
         <TouchableOpacity><MaterialIcons name="add-circle-outline" size={28} color="white" /></TouchableOpacity>
         <TouchableOpacity><FontAwesome name="user-circle" size={24} color="white" /></TouchableOpacity>
       </View>
+
+      {/* Botón de Exportar PDF */}
+      <TouchableOpacity
+        style={styles.exportButton}
+        onPress={generarPDF}
+      >
+        <MaterialIcons name="file-download" size={28} color="white" />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -178,22 +235,12 @@ const styles = StyleSheet.create({
   textArea: { backgroundColor: '#1e293b', color: 'white', padding: 10, borderRadius: 5, minHeight: 100, textAlignVertical: 'top' },
   imageContainer: { backgroundColor: '#1e293b', padding: 10, borderRadius: 5, width: 180, height: 240, alignItems: 'center', justifyContent: 'center' },
   imagePreview: { width: '100%', height: 180, borderRadius: 5 },
-  imagePlaceholder: { width: '100%', height: 180, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1e293b', borderRadius: 5, borderWidth: 2, borderColor: '#4a5568' },
-  plusSign: { fontSize: 40, color: 'white', fontWeight: 'bold' },
-  bottomNav: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-around', 
-    paddingVertical: 5, 
-    paddingHorizontal: 15, 
-    backgroundColor: '#1e293b',
-    height: 45, 
-    alignItems: 'center'  
-  },
-  imageSection: { marginBottom: 20, backgroundColor: '#1e293b', padding: 15, borderRadius: 5 },
-  noImagesText: { color: 'white', fontSize: 16, textAlign: 'center', marginTop: 10 },
+  imagePlaceholder: { width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', backgroundColor: '#253241', borderRadius: 5 },
+  plusSign: { fontSize: 50, color: 'white' },
+  imageSection: { marginTop: 20 },
+  noImagesText: { color: 'white', textAlign: 'center', fontSize: 16 },
   imageItem: { marginBottom: 15 },
-  imageTitle: { color: 'white', fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
-  copyText: { color: '#2563eb', fontSize: 14, marginTop: 5 },
-  message: { color: '#2563eb', fontSize: 16, textAlign: 'center', marginTop: 10 },
-  deleteButton: { position: 'absolute', top: 10, right: 10 }
+  imageTitle: { color: 'white', fontSize: 16, fontWeight: 'bold', marginBottom: 5 },
+  bottomNav: { flexDirection: 'row', justifyContent: 'space-around', padding: 10, backgroundColor: '#1e293b' },
+  exportButton: { position: 'absolute', right: 15, bottom: 70, backgroundColor: '#2563eb', padding: 15, borderRadius: 50 },
 });

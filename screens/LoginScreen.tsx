@@ -6,11 +6,11 @@ import {
   TouchableOpacity, 
   ImageBackground, 
   Image,
-  StyleSheet 
+  StyleSheet
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../App";
-import { FontAwesome } from '@expo/vector-icons';  
+import { FontAwesome } from '@expo/vector-icons';   
 
 
 type Props = NativeStackScreenProps<RootStackParamList, "Login">;
@@ -19,9 +19,44 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false); 
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
 
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword);
+  };
+
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const handleLogin = () => {
+    let valid = true;
+    
+    if (!email) {
+      setEmailError("El correo es obligatorio.");
+      valid = false;
+    } else if (!validateEmail(email)) {
+      setEmailError("Ingrese un correo válido.");
+      valid = false;
+    } else {
+      setEmailError("");
+    }
+
+    if (!password) {
+      setPasswordError("La contraseña es obligatoria.");
+      valid = false;
+    } else if (password.length < 6) {
+      setPasswordError("La contraseña debe tener al menos 6 caracteres.");
+      valid = false;
+    } else {
+      setPasswordError("");
+    }
+
+    if (valid) {
+      navigation.navigate("Mapas");
+    }
   };
 
   return (
@@ -36,19 +71,28 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
         <Text style={styles.title}>Iniciar Sesión</Text>
         
         <TextInput
-          style={styles.input}
+          style={[styles.input, emailError ? styles.errorInput : null]}
           placeholder="Correo electrónico"
           placeholderTextColor="#fff"
-          onChangeText={setEmail}
+          onChangeText={text => {
+            setEmail(text);
+            setEmailError("");
+          }}
+          value={email}
         />
+        {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
         
         <View style={styles.passwordContainer}>
           <TextInput
-            style={styles.passwordInput} 
+            style={[styles.passwordInput, passwordError ? styles.errorInput : null]} 
             placeholder="Contraseña"
             placeholderTextColor="#fff"
             secureTextEntry={!showPassword} 
-            onChangeText={setPassword}
+            onChangeText={text => {
+              setPassword(text);
+              setPasswordError("");
+            }}
+            value={password}
           />
           <TouchableOpacity 
             style={styles.eyeIcon}
@@ -57,10 +101,11 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
             <FontAwesome name={showPassword ? "eye-slash" : "eye"} size={20} color="#fff" />
           </TouchableOpacity>
         </View>
+        {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
         
         <TouchableOpacity 
           style={styles.button}
-          onPress={() => navigation.navigate("Mapas")}
+          onPress={handleLogin}
         >
           <Text style={styles.buttonText}>Iniciar sesión</Text>
         </TouchableOpacity>
@@ -116,7 +161,7 @@ const styles = StyleSheet.create({
     width: "80%",
   },
   passwordInput: {
-    paddingRight: 40, // Space for the eye icon inside the input
+    paddingRight: 40, 
     paddingLeft: 10,
     width: "100%",
     padding: 10,
@@ -132,7 +177,7 @@ const styles = StyleSheet.create({
     right: 10,
     top: 12,
     padding: 5,
-    zIndex: 1, // Ensure the icon is above the input field text
+    zIndex: 1, 
   },
   button: {
     width: "80%",
@@ -146,6 +191,14 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "bold",
+  },
+  errorInput: {
+    borderColor: "red",
+  },
+  errorText: {
+    color: "red",
+    fontSize: 14,
+    marginBottom: 5,
   },
 });
 
