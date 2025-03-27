@@ -95,6 +95,7 @@ export default function ReportScreen() {
         color: rgb(0, 0, 0),
       });
 
+      
     
       for (let index = 0; index < imagenes.length; index++) {
         const image = imagenes[index];
